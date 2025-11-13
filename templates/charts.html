@@ -41,8 +41,8 @@
                 <input id="playerB" class="compare-input" placeholder="Player ID B (e.g. 201939)">
                 <button onclick="loadPlayerComparison()" class="compare-btn">Compare</button>
             </div>
-            <canvas id="compareChart"></canvas>
-        </section>
+    <div id="compare-container"></div>        
+</section>
     </main>
 
 <script>
@@ -82,30 +82,104 @@ async function loadTeamRebounds() {
 }
 
 async function loadPlayerComparison() {
-    const A = document.getElementById("playerA").value.trim();
-    const B = document.getElementById("playerB").value.trim();
-    if (!A || !B) { alert("Enter two valid player IDs."); return; }
+    const A_id = document.getElementById("playerA").value.trim();
+    const B_id = document.getElementById("playerB").value.trim();
+    const container = document.getElementById("compare-container");
+    
+    if (!A_id || !B_id) { 
+        alert("Enter two valid player IDs."); 
+        return; 
+    }
+    container.innerHTML = `<p class="loading" style="text-align:center; padding: 20px;">Comparing players...</p>`;
+
     try {
-        const [aRes, bRes] = await Promise.all([fetch(`/api/player/${A}/profile`), fetch(`/api/player/${B}/profile`)]);
+        const [aRes, bRes] = await Promise.all([
+            fetch(`/api/player/${A_id}/profile`), 
+            fetch(`/api/player/${B_id}/profile`)
+        ]);
         const [aData, bData] = await Promise.all([aRes.json(), bRes.json()]);
+        
         const a = aData.info && aData.info[0] ? aData.info[0] : null;
         const b = bData.info && bData.info[0] ? bData.info[0] : null;
-        if (!a || !b) { alert("Invalid Player ID(s)."); return; }
-        const labels = ["PTS","REB","AST"];
-        const aStats = [a.PTS || a.pts || 0, a.REB || a.reb || 0, a.AST || a.ast || 0];
-        const bStats = [b.PTS || b.pts || 0, b.REB || b.reb || 0, b.AST || b.ast || 0];
-        new Chart(document.getElementById("compareChart"), {
-            type: 'radar',
-            data: {
-                labels: labels,
-                datasets: [
-                    { label: a.DISPLAY_FIRST_LAST || a.PLAYER || "A", data: aStats, borderColor:"#1d428a", backgroundColor:"rgba(29,66,138,0.4)" },
-                    { label: b.DISPLAY_FIRST_LAST || b.PLAYER || "B", data: bStats, borderColor:"#c8102e", backgroundColor:"rgba(200,16,46,0.4)" }
-                ]
-            },
-            options: { scales:{ r:{ ticks:{ color:"#fff" }, pointLabels:{ color:"#fff" } } }, plugins:{ legend:{ labels:{ color:"#fff" } } } }
-        });
-    } catch (e) { console.error(e); alert("Failed to load player data."); }
+
+        if (!a || !b) { 
+            alert("Invalid Player ID(s)."); 
+            container.innerHTML = `<p class="error" style="text-align:center;">Failed to load one or both players.</p>`;
+            return; 
+        }
+
+        const aHeadshot = `https://cdn.nba.com/headshots/nba/latest/1040x760/${a.PERSON_ID}.png`;
+        const bHeadshot = `https://cdn.nba.com/headshots/nba/latest/1040x760/${b.PERSON_ID}.png`;
+
+        // Helper function to build a stat row (3 list items)
+        // inverse=true means a LOWER number is better (e.g., Turnovers)
+        function buildStatRow(statName, a_val, b_val, isInverse = false) {
+            let a_class = '';
+            let b_class = '';
+            
+            // Convert to numbers for comparison
+            const a_num = parseFloat(a_val);
+            const b_num = parseFloat(b_val);
+            
+            if (a_num > b_num) {
+                a_class = isInverse ? 'stat-worse' : 'stat-better';
+                b_class = isInverse ? 'stat-better' : 'stat-worse';
+            } else if (b_num > a_num) {
+                b_class = isInverse ? 'stat-worse' : 'stat-better';
+                a_class = isInverse ? 'stat-better' : 'stat-worse';
+            }
+            
+            // Format percentages and round others
+            let a_display = a_val;
+            let b_display = b_val;
+            
+            if (statName.includes('%')) {
+                a_display = (a_num * 100).toFixed(1) + '%';
+                b_display = (b_num * 100).toFixed(1) + '%';
+            } else if (statName !== 'PTS') { // Keep PTS as is (e.g., 34.9)
+                 a_display = a_num.toFixed(1);
+                 b_display = b_num.toFixed(1);
+            }
+
+            return `
+                <li><span class="${a_class}">${a_display}</span></li>
+                <li class="stat-label">${statName}</li>
+                <li><span class="${b_class}">${b_display}</span></li>
+            `;
+        }
+
+        // Build the HTML
+        container.innerHTML = `
+            <div class="compare-grid">
+                <div class="compare-card">
+                    <img src="${aHeadshot}" class="compare-headshot" onerror="this.src='/static/logo.png'">
+                    <h3>${a.DISPLAY_FIRST_LAST || 'Player A'}</h3>
+                </div>
+                
+                <div class="compare-card">
+                    <img src="${bHeadshot}" class="compare-headshot" onerror="this.src='/static/logo.png'">
+                    <h3>${b.DISPLAY_FIRST_LAST || 'Player B'}</h3>
+                </div>
+            </div>
+
+            <ul class="compare-stats-table">
+                ${buildStatRow('PTS', a.PTS || 0, b.PTS || 0)}
+                ${buildStatRow('REB', a.REB || 0, b.REB || 0)}
+                ${buildStatRow('AST', a.AST || 0, b.AST || 0)}
+                ${buildStatRow('STL', a.STL || 0, b.STL || 0)}
+                ${buildStatRow('BLK', a.BLK || 0, b.BLK || 0)}
+                ${buildStatRow('TOV', a.TOV || 0, b.TOV || 0, true)} 
+                ${buildStatRow('FG%', a.FG_PCT || 0, b.FG_PCT || 0)}
+                ${buildStatRow('3P%', a.FG3_PCT || 0, b.FG3_PCT || 0)}
+                ${buildStatRow('FT%', a.FT_PCT || 0, b.FT_PCT || 0)}
+            </ul>
+        `;
+
+    } catch (e) { 
+        console.error(e); 
+        alert("Failed to load player data."); 
+        container.innerHTML = `<p class="error" style="text-align:center;">Failed to load comparison.</p>`;
+    }
 }
 
 loadTopScorers();

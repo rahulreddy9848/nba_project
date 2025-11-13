@@ -571,14 +571,35 @@ def api_player_gamelog(player_id):
 # ---------------------------
 # *** NEW HELPER FUNCTIONS for CDN box score ***
 # ---------------------------
+# ---------------------------
+# *** NEW HELPER FUNCTIONS for CDN box score ***
+# ---------------------------
 def _format_cdn_player(p, team_tricode):
     # Helper to format a player obj from CDN to what frontend expects
     stats = p.get('statistics', {})
+    
+    # --- FIX FOR MINUTES ---
+    minutes_str = stats.get('minutes', 'PT0M0S') # Get the raw string
+    min_formatted = '00:00' # Default
+    if minutes_str and 'PT' in minutes_str:
+        try:
+            # Use regex to find M (minutes) and S (seconds) values
+            match = re.match(r'PT(?:(\d+)M)?(?:(\d+)\.?\d*S)?', minutes_str)
+            if match:
+                mins = match.group(1) or '0'
+                secs = match.group(2) or '0'
+                # Format as MM:SS with leading zeros
+                min_formatted = f"{mins.zfill(2)}:{secs.zfill(2)}"
+        except Exception:
+            pass # If parsing fails, it will just show '00:00'
+    # --- END FIX ---
+
     return {
         "personId": p.get('personId'),
-        "playerName": p.get('firstName', '') + ' ' + p.get('lastName', ''),
+        # --- FIX FOR NAME: Use 'name' field, which is the full name ---
+        "playerName": p.get('name', p.get('firstName', '') + ' ' + p.get('lastName', '')),
         "teamTricode": team_tricode,
-        "minutes": stats.get('minutes', '00:00'),
+        "minutes": min_formatted, # Use the new formatted string
         "points": stats.get('points'),
         "reboundsTotal": stats.get('reboundsTotal'),
         "assists": stats.get('assists'),
