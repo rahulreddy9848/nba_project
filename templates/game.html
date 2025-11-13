@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>GameTrack — Game</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/chart.css" />
+</head>
+<body>
+    <nav id="navbar">
+        <div id="nav-left">
+            <a href="/"><img src="/static/logo.png" id="nav-logo" alt="GameTrack Logo" onerror="this.src='https://placehold.co/40x40/333/FFF?text=GT'"/></a>
+            <span id="nav-title">GameTrack</span>
+        </div>
+        <div id="nav-right">
+            <a href="/" class="nav-link">Home</a>
+            <a href="/teams" class="nav-link">Teams</a>
+            <a href="/charts" class="nav-link">Charts</a>
+        </div>
+    </nav>
+
+    <main id="main-content">
+        <div class="back-button" onclick="history.back()">← Back</div>
+        <div class="view-header">
+            <h1 id="game-title">Game Box Score</h1>
+            <select id="team-select" class="styled-select" onchange="renderPlayerTable()">
+                <option value="ALL">All Players</option>
+            </select>
+        </div>
+
+        <div id="team-stats" class="panel">
+            <h2>Team Stats</h2>
+            <p class="loading">Loading team stats...</p>
+        </div>
+
+        <div id="player-stats" class="panel">
+            <h2>Player Stats</h2>
+            <p class="loading">Loading player stats...</p>
+        </div>
+    </main>
+
+<script>
+    const gameId = window.location.pathname.split("/").pop();
+    let fullPlayerStats = [];
+    let fullTeamStats = [];
+
+    async function loadGame() {
+        const tBox = document.getElementById("team-stats");
+        const pBox = document.getElementById("player-stats");
+        const dropdown = document.getElementById("team-select");
+        try {
+            const res = await fetch(`/api/game/${gameId}/boxscore`);
+            if (!res.ok) throw new Error("boxscore fetch failed");
+            const data = await res.json();
+            fullPlayerStats = data.playerStats || [];
+            fullTeamStats = data.teamStats || [];
+
+            const away = fullTeamStats.find(t => t.teamTricode !== (fullTeamStats[0] && fullTeamStats[0].teamTricode)) || fullTeamStats[1] || fullTeamStats[0];
+            const home = fullTeamStats[0];
+            if (away && home) {
+                document.getElementById("game-title").textContent = `${away.teamTricode || away.teamName} @ ${home.teamTricode || home.teamName}`;
+            }
+
+            fullTeamStats.forEach(team => {
+                dropdown.innerHTML += `<option value="${team.teamTricode || team.teamName}">${team.teamName || team.teamTricode}</option>`;
+            });
+
+            tBox.innerHTML = buildTeamStatsTable(fullTeamStats);
+            renderPlayerTable();
+        } catch (err) {
+            console.error(err);
+            tBox.innerHTML = `<p class="error">Failed to load box score.</p>`;
+        }
+    }
+
+    function renderPlayerTable() {
+        const box = document.getElementById("player-stats");
+        const team = document.getElementById("team-select").value;
+        let players = fullPlayerStats;
+        if (team !== "ALL") {
+            players = fullPlayerStats.filter(p => (p.teamTricode === team) || (p.teamName === team));
+        }
+        box.innerHTML = `<h2>Player Stats</h2>` + buildPlayerStatsTable(players);
+    }
+
+    function buildTeamStatsTable(teams) {
+        if (!teams || teams.length === 0) return "<p>No team stats.</p>";
+        let html = `<table><thead><tr><th>Team</th><th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>FGM</th><th>FGA</th><th>3PM</th><th>3PA</th><th>FTM</th><th>FTA</th><th>TOV</th></tr></thead><tbody>`;
+        teams.forEach(t => {
+            html += `<tr>
+                <td>${t.teamName || t.teamTricode}</td>
+                <td>${t.points || t.score || t.homeScore || 0}</td>
+                <td>${t.reboundsTotal || t.reb || 0}</td>
+                <td>${t.assists || 0}</td>
+                <td>${t.steals || 0}</td>
+                <td>${t.blocks || 0}</td>
+                <td>${t.fieldGoalsMade || 0}</td>
+                <td>${t.fieldGoalsAttempted || 0}</td>
+                <td>${t.threePointersMade || 0}</td>
+                <td>${t.threePointersAttempted || 0}</td>
+                <td>${t.freeThrowsMade || 0}</td>
+                <td>${t.freeThrowsAttempted || 0}</td>
+                <td>${t.turnovers || 0}</td>
+            </tr>`;
+        });
+        html += "</tbody></table>";
+        return html;
+    }
+
+    function buildPlayerStatsTable(players) {
+        if (!players || players.length === 0) return "<p>No players found.</p>";
+        let html = `<table class="with-headshots"><thead><tr><th>Player</th><th>Team</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>STL</th><th>BLK</th><th>FGM</th><th>FGA</th><th>3PM</th><th>3PA</th><th>FTM</th><th>FTA</th><th>TOV</th><th>+/-</th></tr></thead><tbody>`;
+        players.forEach(p => {
+            html += `<tr class="clickable-row" onclick="window.location.href='/player/${p.personId || p.PERSON_ID || p.PLAYER_ID || p.playerId}'">
+                <td><img src="${p.playerImageUrl || '/static/logo.png'}" class="player-headshot" onerror="this.src='/static/logo.png'"/> ${p.playerName || p.PLAYER || p.DISPLAY_FIRST_LAST || p.personId}</td>
+                <td>${p.teamTricode || p.teamName}</td>
+                <td>${p.minutes || p.MIN || ''}</td>
+                <td>${p.points || p.PTS || 0}</td>
+                <td>${p.reboundsTotal || p.REB || 0}</td>
+                <td>${p.assists || p.AST || 0}</td>
+                <td>${p.steals || p.STL || 0}</td>
+                <td>${p.blocks || p.BLK || 0}</td>
+                <td>${p.fieldGoalsMade || p.FGM || 0}</td>
+                <td>${p.fieldGoalsAttempted || p.FGA || 0}</td>
+                <td>${p.threePointersMade || p.FG3M || 0}</td>
+                <td>${p.threePointersAttempted || p.FG3A || 0}</td>
+                <td>${p.freeThrowsMade || p.FTM || 0}</td>
+                <td>${p.freeThrowsAttempted || p.FTA || 0}</td>
+                <td>${p.turnovers || p.TOV || 0}</td>
+                <td>${p.plusMinusPoints || p.PLUS_MINUS || 0}</td>
+            </tr>`;
+        });
+        html += "</tbody></table>";
+        return html;
+    }
+
+    loadGame();
+</script>
+</body>
+</html>

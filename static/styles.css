@@ -1,0 +1,326 @@
+/* static/styles.css */
+
+/* ============================================================
+   GLOBAL THEME
+============================================================ */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Inter", sans-serif;
+}
+
+body {
+    background-color: #0f0f0f;
+    color: #e0e0e0;
+    padding-bottom: 50px;
+}
+
+h1, h2, h3 {
+    color: #fff;
+    font-weight: 600;
+}
+
+.page-title {
+    margin: 20px 0 15px 0;
+}
+
+.sub-title {
+    color: #bbb;
+    margin-top: 4px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* ============================================================
+   NAVBAR
+============================================================ */
+#navbar {
+    width: 100%;
+    background: #111;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #222;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+#nav-logo {
+    height: 40px;
+    margin-right: 10px;
+}
+
+#nav-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#nav-title {
+    font-size: 1.4rem;
+    font-weight: 600;
+}
+
+#nav-right .nav-link {
+    margin-left: 18px;
+    cursor: pointer;
+    color: #ccc;
+    font-size: 1.05rem;
+    transition: 0.2s;
+    text-decoration: none;
+}
+
+#nav-right .nav-link:hover {
+    color: #fff;
+}
+
+.nav-link.active {
+    color: #1d9bf0;
+    font-weight: 600;
+}
+
+/* ============================================================
+   PANELS & CARDS
+============================================================ */
+.panel {
+    background: #181818;
+    padding: 18px;
+    border-radius: 12px;
+    margin: 20px 0;
+    border: 1px solid #222;
+}
+
+.loading {
+    color: #aaa;
+    font-style: italic;
+}
+
+.error {
+    color: #ff4d4d;
+    font-weight: 500;
+}
+
+.score-card {
+    background: #181818;
+    border: 1px solid #222;
+    padding: 15px 20px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.score-card:hover {
+    background: #222;
+}
+
+.team-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 2px 0;
+    font-size: 1.1rem;
+}
+
+.game-status {
+    font-size: 0.85rem;
+    color: #999;
+    margin-top: 8px;
+}
+
+/* ============================================================
+   TABLES
+============================================================ */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th, td {
+    padding: 10px 6px;
+    text-align: left;
+    color: #eee;
+}
+
+th {
+    color: #ddd;
+    border-bottom: 2px solid #333;
+}
+
+td {
+    border-bottom: 1px solid #222;
+}
+
+/* Clickable rows */
+.clickable-row {
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.clickable-row:hover {
+    background: #2a2a2a;
+}
+
+/* Player headshot in tables */
+.player-headshot {
+    width: 35px;
+    height: 35px;
+    border-radius: 6px;
+    object-fit: cover;
+    border: 1px solid #444;
+}
+
+/* ============================================================
+   BUTTONS & INPUTS
+============================================================ */
+.back-button {
+    background: #1d1d1d;
+    padding: 8px 16px;
+    border-radius: 8px;
+    display: inline-block;
+    cursor: pointer;
+    margin: 10px 0;
+    border: 1px solid #333;
+    transition: 0.2s;
+}
+
+.back-button:hover {
+    background: #2a2a2a;
+}
+
+.styled-select {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: #111;
+    color: #fff;
+    border: 1px solid #333;
+}
+
+/* Player comparison inputs */
+.compare-input {
+    padding: 8px;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: #fff;
+}
+
+.compare-btn {
+    padding: 8px 16px;
+    background: #1d428a;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.compare-btn:hover {
+    background: #133064;
+}
+
+/* ============================================================
+   TEAM GRID
+============================================================ */
+.team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 18px;
+    margin-top: 20px;
+}
+
+.team-card {
+    background: #181818;
+    padding: 15px;
+    border-radius: 12px;
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid #222;
+    transition: 0.2s;
+}
+
+.team-card:hover {
+    background: #222;
+}
+
+.team-card img {
+    width: 75px;
+    height: 75px;
+    object-fit: contain;
+    margin-bottom: 10px;
+}
+
+/* ============================================================
+   PLAYER HEADER CARD
+============================================================ */
+.player-header-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: #181818;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #222;
+    margin-bottom: 20px;
+}
+
+.player-header-card img {
+    width: 130px;
+    height: 100px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid #333;
+}
+
+.player-bio-info span {
+    margin-right: 8px;
+    color: #ddd;
+}
+
+/* ============================================================
+   DETAIL GRID (Team page)
+============================================================ */
+.detail-grid {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+@media (max-width: 900px) {
+    .detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================================
+   CHART SECTIONS
+============================================================ */
+.chart-section {
+    background: #181818;
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid #222;
+    margin: 25px 0;
+}
+
+canvas {
+    margin-top: 20px;
+}
+
+/* ============================================================
+   MISC
+============================================================ */
+ul {
+    padding-left: 20px;
+}
+
+ul li {
+    margin: 6px 0;
+    color: #ddd;
+}

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GameTrack</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/chart.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav id="navbar">
+        <div id="nav-left">
+            <a href="/"><img src="/static/logo.png" id="nav-logo" alt="GameTrack Logo" onerror="this.src='https://placehold.co/40x40/333/FFF?text=GT'"/></a>
+            <span id="nav-title">GameTrack</span>
+        </div>
+        <div id="nav-right">
+            <a class="nav-link" data-view="home-view">Home</a>
+            <a href="/teams" class="nav-link">Teams</a>
+            <a class="nav-link" data-view="leaders-view">Leaders</a>
+        </div>
+    </nav>
+
+    <main id="main-content">
+        <!-- HOME VIEW -->
+        <section id="home-view" class="page-view">
+            <h1 class="page-title">🏀 GameTrack — Today</h1>
+
+            <div id="scoreboard-container" class="panel">
+                <p class="loading">Loading scoreboard...</p>
+            </div>
+
+            <div id="homepage-panels" style="display:flex;gap:20px;flex-wrap:wrap;">
+                <div id="homepage-standings-wrapper" style="flex:1;min-width:320px;">
+                    <div class="panel" id="east-standings">
+                        <h3>Eastern Conference</h3>
+                        <p class="loading">Loading...</p>
+                    </div>
+                    <div class="panel" id="west-standings">
+                        <h3>Western Conference</h3>
+                        <p class="loading">Loading...</p>
+                    </div>
+                </div>
+
+                <div id="leaders-card" class="panel" style="width:360px;">
+                    <h2>League Leaders</h2>
+                    <p class="loading">Loading...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- LEADERS VIEW -->
+        <section id="leaders-view" class="page-view hidden">
+            <h1 class="page-title">League Leaders</h1>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div>
+                    <label for="stat-select">Choose Stat:</label>
+                    <select id="stat-select" onchange="loadLeadersPage()">
+                        <option value="PTS">Points</option>
+                        <option value="REB">Rebounds</option>
+                        <option value="AST">Assists</option>
+                        <option value="STL">Steals</option>
+                        <option value="BLK">Blocks</option>
+                        <option value="FG3M">3-PT Made</option>
+                    </select>
+                </div>
+                <div>
+                    <button class="back-button" onclick="showView('home-view')">← Back</button>
+                </div>
+            </div>
+
+            <div id="leaders-table-container" class="panel">
+                <p class="loading">Loading leaders...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

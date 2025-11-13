@@ -1,0 +1,63 @@
+/* static/chart.css */
+
+/* Parent container */
+.chart-section {
+    position: relative;
+    padding: 25px;
+    background: #161616;
+    border: 1px solid #222;
+    border-radius: 12px;
+    margin-top: 30px;
+}
+
+/* Chart titles */
+.chart-section h2 {
+    margin-bottom: 12px;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Canvas elements */
+.chart-section canvas {
+    width: 100% !important;
+    max-height: 420px;
+    margin-top: 15px;
+    background: transparent;
+}
+
+/* Tooltip theme override for readability */
+.chartjs-tooltip {
+    background: rgba(20, 20, 20, 0.95) !important;
+    color: #fff !important;
+    border: 1px solid #333 !important;
+}
+
+/* Player comparison input bar */
+.compare-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.compare-input {
+    flex: 1;
+    min-width: 140px;
+}
+
+.compare-btn {
+    padding: 10px 18px;
+    font-size: 1rem;
+}
+
+/* Radar chart tweaks */
+.chartjs-render-monitor {
+    background: transparent;
+}
+
+/* Improve chart layout on mobile */
+@media (max-width: 700px) {
+    .chart-section canvas {
+        max-height: 350px;
+    }
+}

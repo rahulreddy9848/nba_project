@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title id="page-title">GameTrack — Team</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/chart.css" />
+</head>
+<body>
+    <nav id="navbar">
+        <div id="nav-left">
+            <a href="/"><img src="/static/logo.png" id="nav-logo" alt="GameTrack Logo" onerror="this.src='https://placehold.co/40x40/333/FFF?text=GT'"/></a>
+            <span id="nav-title">GameTrack</span>
+        </div>
+        <div id="nav-right">
+            <a href="/" class="nav-link">Home</a>
+            <a href="/teams" class="nav-link">Teams</a>
+            <a href="/charts" class="nav-link">Charts</a>
+        </div>
+    </nav>
+
+    <main id="main-content">
+        <div class="back-button" onclick="history.back()">← Back</div>
+        <h1 id="team-name" class="page-title">Loading...</h1>
+
+        <div class="detail-grid">
+            <div class="detail-panel panel">
+                <h2>Roster</h2>
+                <div id="roster-table" class="table-container">
+                    <p class="loading">Loading roster...</p>
+                </div>
+            </div>
+
+            <div class="detail-panel panel">
+                <h2>Schedule</h2>
+                <div id="upcoming-table" class="table-container">
+                    <p class="loading">Loading...</p>
+                </div>
+                <div id="recent-table" class="table-container" style="margin-top:20px;">
+                    <p class="loading">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+<script>
+    // extract team id from path: /team/<id>
+    const teamId = window.location.pathname.split("/").pop();
+
+    async function loadTeam() {
+        const nameEl = document.getElementById("team-name");
+        const rosterBox = document.getElementById("roster-table");
+        const upcomingBox = document.getElementById("upcoming-table");
+        const recentBox = document.getElementById("recent-table");
+
+        try {
+            const tRes = await fetch("/api/teams");
+            const allTeams = await tRes.json();
+            const team = allTeams.find(t => String(t.id) === String(teamId));
+            if (team) {
+                nameEl.textContent = team.full_name;
+                document.getElementById("page-title").textContent = team.full_name + " - Team Page";
+            }
+
+            const rRes = await fetch(`/api/team/${teamId}/roster`);
+            const roster = await rRes.json();
+            rosterBox.innerHTML = buildRosterTable(roster);
+
+            const sRes = await fetch(`/api/team/${teamId}/schedule`);
+            const schedule = await sRes.json();
+            upcomingBox.innerHTML = buildScheduleTable(schedule.upcoming || [], false);
+            recentBox.innerHTML = buildScheduleTable(schedule.recent || [], true);
+
+        } catch (err) {
+            console.error(err);
+            rosterBox.innerHTML = `<p class="error">Failed to load team data.</p>`;
+            upcomingBox.innerHTML = `<p class="error">Failed to load schedule.</p>`;
+            recentBox.innerHTML = `<p class="error">Failed to load schedule.</p>`;
+        }
+    }
+
+    function buildRosterTable(data) {
+        if (!data || data.length === 0) return "<p>No roster available.</p>";
+        let html = `<table><thead><tr><th>#</th><th>PLAYER</th><th>POS</th><th>AGE</th><th>HEIGHT</th><th>WEIGHT</th><th>SCHOOL</th></tr></thead><tbody>`;
+        data.forEach(p => {
+            html += `
+                <tr onclick="window.location.href='/player/${p.PLAYER_ID || p.personId || p.PERSON_ID}'" class="clickable-row">
+                    <td>${p.NUM || p.JERSEY || ''}</td>
+                    <td>${p.PLAYER || p.player || p.DISPLAY_FIRST_LAST || ''}</td>
+                    <td>${p.POSITION || p.position || ''}</td>
+                    <td>${p.AGE ?? "N/A"}</td>
+                    <td>${p.HEIGHT || ''}</td>
+                    <td>${p.WEIGHT || ''}</td>
+                    <td>${p.SCHOOL || p.college || "—"}</td>
+                </tr>`;
+        });
+        html += "</tbody></table>";
+        return html;
+    }
+
+    function buildScheduleTable(games, clickable) {
+        if (!games || games.length === 0) return "<p>No games available.</p>";
+        let html = `<table><thead><tr><th>Date</th><th>Matchup</th><th>Result</th></tr></thead><tbody>`;
+        games.forEach(g => {
+            const rowClick = clickable && g.GAME_ID ? `onclick="window.location.href='/game/${g.GAME_ID}'"` : "";
+            html += `<tr class="${clickable ? "clickable-row" : ""}" ${rowClick}>
+                        <td>${new Date(g.GAME_DATETIME || g.GAME_DATE || g.startTimeUTC || '').toLocaleDateString()}</td>
+                        <td>${g.MATCHUP || g.matchup || ''}</td>
+                        <td>${g.WL ?? g.WL ?? (g.W ? 'W' : (g.L ? 'L' : 'TBD'))}</td>
+                     </tr>`;
+        });
+        html += "</tbody></table>";
+        return html;
+    }
+
+    loadTeam();
+</script>
+</body>
+</html>

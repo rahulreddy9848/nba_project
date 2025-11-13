@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GameTrack — Charts</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/chart.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <nav id="navbar">
+        <div id="nav-left">
+            <a href="/"><img src="/static/logo.png" id="nav-logo" alt="GameTrack Logo" onerror="this.src='https://placehold.co/40x40/333/FFF?text=GT'"/></a>
+            <span id="nav-title">GameTrack</span>
+        </div>
+        <div id="nav-right">
+            <a href="/" class="nav-link">Home</a>
+            <a href="/teams" class="nav-link">Teams</a>
+            <a class="nav-link active">Charts</a>
+        </div>
+    </nav>
+
+    <main id="main-content">
+        <h1 class="page-title">GameTrack Analytics</h1>
+
+        <section class="chart-section">
+            <h2>Top 10 Scorers (PTS)</h2>
+            <canvas id="ptsChart"></canvas>
+        </section>
+
+        <section class="chart-section">
+            <h2>Top 10 Rebounding Teams</h2>
+            <canvas id="teamRebChart"></canvas>
+        </section>
+
+        <section class="chart-section">
+            <h2>Player Comparison</h2>
+            <div class="compare-bar">
+                <input id="playerA" class="compare-input" placeholder="Player ID A (e.g. 2544)">
+                <input id="playerB" class="compare-input" placeholder="Player ID B (e.g. 201939)">
+                <button onclick="loadPlayerComparison()" class="compare-btn">Compare</button>
+            </div>
+            <canvas id="compareChart"></canvas>
+        </section>
+    </main>
+
+<script>
+async function loadTopScorers() {
+    try {
+        const res = await fetch("/api/leaders/PTS");
+        const data = await res.json();
+        const top10 = (Array.isArray(data) ? data : data.slice ? data.slice(0,10) : data) || [];
+        new Chart(document.getElementById("ptsChart"), {
+            type: 'bar',
+            data: {
+                labels: top10.map(p => p.PLAYER || p.PLAYER_NAME || p.player),
+                datasets: [{ label: "Points", data: top10.map(p => p.PTS || p.pts || p.PTS_PER_G || 0), backgroundColor: "#1d428a" }]
+            },
+            options: { responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{ color:"#fff"}}, y:{ ticks:{ color:"#fff"} } } }
+        });
+    } catch (e) { console.error(e); }
+}
+
+async function loadTeamRebounds() {
+    try {
+        const res = await fetch("/api/leaders/REB");
+        const players = await res.json();
+        const teamMap = {};
+        (players || []).forEach(p => {
+            const team = p.TEAM || p.abbreviation || p.team || '';
+            const reb = Number(p.REB || p.reb || 0);
+            teamMap[team] = (teamMap[team] || 0) + reb;
+        });
+        const entries = Object.entries(teamMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+        new Chart(document.getElementById("teamRebChart"), {
+            type: 'bar',
+            data: { labels: entries.map(e=>e[0]), datasets:[{label:"REB", data:entries.map(e=>e[1]), backgroundColor:"#c8102e"}] },
+            options: { responsive:true, plugins:{legend:{display:false}}, scales:{ x:{ ticks:{ color:"#fff"}}, y:{ ticks:{ color:"#fff"} } } }
+        });
+    } catch (e) { console.error(e); }
+}
+
+async function loadPlayerComparison() {
+    const A = document.getElementById("playerA").value.trim();
+    const B = document.getElementById("playerB").value.trim();
+    if (!A || !B) { alert("Enter two valid player IDs."); return; }
+    try {
+        const [aRes, bRes] = await Promise.all([fetch(`/api/player/${A}/profile`), fetch(`/api/player/${B}/profile`)]);
+        const [aData, bData] = await Promise.all([aRes.json(), bRes.json()]);
+        const a = aData.info && aData.info[0] ? aData.info[0] : null;
+        const b = bData.info && bData.info[0] ? bData.info[0] : null;
+        if (!a || !b) { alert("Invalid Player ID(s)."); return; }
+        const labels = ["PTS","REB","AST"];
+        const aStats = [a.PTS || a.pts || 0, a.REB || a.reb || 0, a.AST || a.ast || 0];
+        const bStats = [b.PTS || b.pts || 0, b.REB || b.reb || 0, b.AST || b.ast || 0];
+        new Chart(document.getElementById("compareChart"), {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: a.DISPLAY_FIRST_LAST || a.PLAYER || "A", data: aStats, borderColor:"#1d428a", backgroundColor:"rgba(29,66,138,0.4)" },
+                    { label: b.DISPLAY_FIRST_LAST || b.PLAYER || "B", data: bStats, borderColor:"#c8102e", backgroundColor:"rgba(200,16,46,0.4)" }
+                ]
+            },
+            options: { scales:{ r:{ ticks:{ color:"#fff" }, pointLabels:{ color:"#fff" } } }, plugins:{ legend:{ labels:{ color:"#fff" } } } }
+        });
+    } catch (e) { console.error(e); alert("Failed to load player data."); }
+}
+
+loadTopScorers();
+loadTeamRebounds();
+</script>
+</body>
+</html>

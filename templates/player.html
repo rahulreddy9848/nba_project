@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>GameTrack — Player</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+    <div class="back-button" onclick="history.back()">‹ Back</div>
+
+    <div class="player-header-card">
+        <img id="player-profile-headshot" src="/static/logo.png" alt="Player Headshot" />
+        <div class="player-header-info">
+            <h1 id="player-profile-name">Loading...</h1>
+            <h3 id="player-profile-team"></h3>
+            <div id="player-profile-bio" class="player-bio-info"></div>
+        </div>
+    </div>
+
+    <div id="player-accolades-container" class="panel">
+        <h2>Accolades</h2>
+        <p class="loading">Loading accolades...</p>
+    </div>
+
+    <div id="player-gamelog-container" class="panel">
+        <h2>Recent Games</h2>
+        <p class="loading">Loading game log...</p>
+    </div>
+
+<script>
+    // Get player id from path: /player/<id>
+    const playerId = window.location.pathname.split("/").pop();
+    document.addEventListener("DOMContentLoaded", () => {
+        loadPlayerDetails(playerId);
+        loadPlayerAccolades(playerId);
+        loadGameLog(playerId);
+    });
+
+    async function loadPlayerDetails(id) {
+        try {
+            const res = await fetch(`/api/player/${id}/profile`);
+            const data = await res.json();
+            const headshot = document.getElementById("player-profile-headshot");
+            const nameEl = document.getElementById("player-profile-name");
+            const teamEl = document.getElementById("player-profile-team");
+            const bioEl = document.getElementById("player-profile-bio");
+            const info = (data.info && data.info[0]) ? data.info[0] : null;
+            if (!info) throw new Error("No player info");
+            headshot.src = `https://cdn.nba.com/headshots/nba/latest/1040x760/${id}.png`;
+            headshot.onerror = () => headshot.src = '/static/logo.png';
+            nameEl.textContent = info.DISPLAY_FIRST_LAST || info.PLAYER || "Player";
+            teamEl.textContent = `${info.TEAM_NAME || info.teamName || 'N/A'} | #${info.JERSEY || info.NUM || ''}`;
+            const age = info.AGE || "N/A";
+            bioEl.innerHTML = `
+                <span>${info.POSITION || ''}</span>
+                <span>|</span>
+                <span>${info.HEIGHT || ''}</span>
+                <span>|</span>
+                <span>${info.WEIGHT ? info.WEIGHT + ' lbs' : ''}</span>
+                <span>|</span>
+                <span>Age: ${age}</span>
+            `;
+        } catch (e) {
+            console.error(e);
+            document.getElementById("player-profile-name").textContent = "Error loading player";
+        }
+    }
+
+    async function loadPlayerAccolades(id) {
+        const container = document.getElementById("player-accolades-container");
+        try {
+            const response = await fetch("/static/accolades_active.json");
+            const accoladesData = await response.json();
+            let accolades = accoladesData[id] || accoladesData[String(id)];
+            if (!accolades) {
+                const nameRes = await fetch(`/api/player/${id}/profile`);
+                const nameData = await nameRes.json();
+                const name = nameData.info && nameData.info[0] ? nameData.info[0].DISPLAY_FIRST_LAST : null;
+                if (name) accolades = accoladesData[name];
+            }
+            if (!accolades) {
+                container.innerHTML = "<h2>Accolades</h2><p>No accolades listed.</p>";
+                return;
+            }
+            let html = "<h2>Accolades</h2><ul>";
+            accolades.forEach(item => html += `<li>${item}</li>`);
+            html += "</ul>";
+            container.innerHTML = html;
+        } catch (error) {
+            console.error("Error loading accolades:", error);
+            container.innerHTML = "<h2>Accolades</h2><p>Error loading accolades.</p>";
+        }
+    }
+
+    async function loadGameLog(id) {
+        const container = document.getElementById("player-gamelog-container");
+        try {
+            const res = await fetch(`/api/player/${id}/gamelog`);
+            const log = await res.json();
+            if (!log || log.length === 0) {
+                container.innerHTML = "<h2>Recent Games</h2><p>No games this season.</p>";
+                return;
+            }
+            let html = `<h2>Recent Games</h2><table><thead><tr><th>Date</th><th>Matchup</th><th>Pts</th><th>Reb</th><th>Ast</th><th>Min</th></tr></thead><tbody>`;
+            log.forEach(g => {
+                html += `<tr><td>${g.GAME_DATE || g.game_date || ''}</td><td>${g.MATCHUP || g.matchup || ''}</td><td>${g.PTS ?? g.pts ?? ''}</td><td>${g.REB ?? g.reb ?? ''}</td><td>${g.AST ?? g.ast ?? ''}</td><td>${g.MIN || g.minutes || ''}</td></tr>`;
+            });
+            html += "</tbody></table>";
+            container.innerHTML = html;
+        } catch (e) {
+            console.error(e);
+            container.innerHTML = "<h2>Recent Games</h2><p>Error loading game log.</p>";
+        }
+    }
+</script>
+</body>
+</html>
