@@ -37,13 +37,13 @@ html::before {
 body {
     /* --- MODIFIED BACKGROUND --- */
     background-color: #0a0a0a; /* Fallback */
-    /* --- NEW: Set single static background image --- */
-    background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.85)), url('/static/bg1.jpg');
+    /* --- REMOVED: Static background-image line --- */
+
     background-size: cover;
     background-position: center center;
     background-attachment: fixed;
     background-repeat: no-repeat;
-    
+
     /* --- REMOVED: Slideshow animation --- */
     /* animation: imageSlideshow 30s linear infinite; */
     /* --- END BACKGROUND MODIFICATION --- */
@@ -51,7 +51,10 @@ body {
     color: #e0e0e0;
     padding-bottom: 50px;
     padding-top: 70px; /* Space for fixed navbar */
-    animation: fadeInPage 0.5s ease-in-out;
+
+    /* --- COMBINED ANIMATIONS --- */
+    /* Runs the 30s infinite slideshow AND the 0.5s page fade-in */
+    animation: imageSlideshow 30s linear infinite, fadeInPage 0.5s ease-in-out;
 }
 
 @keyframes fadeInPage {
@@ -568,4 +571,36 @@ ul li {
     object-fit: contain;
     margin-right: 8px;
     vertical-align: middle;
+}
+
+/*
+============================================================
+   BACKGROUND SLIDESHOW
+============================================================
+*/
+@keyframes imageSlideshow {
+    /* Start with image 1 */
+    0% {
+        background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.85)), url('/static/bg1.jpg');
+    }
+    /* Hold image 1 for 10s (33.3% of 30s) */
+    33.33% {
+        background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.85)), url('/static/bg1.jpg');
+    }
+    /* Switch to image 2 */
+    33.34% {
+        background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.85)), url('/static/bg2.jpg');
+    }
+    /* Hold image 2 for 10s */
+    66.66% {
+        background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.85)), url('/static/bg2.jpg');
+    }
+    /* Switch to image 3 */
+    66.67% {
+        background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.85)), url('/static/bg3.jpg');
+    }
+    /* Hold image 3 for 10s */
+    100% {
+        background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.85)), url('/static/bg3.jpg');
+    }
 }
