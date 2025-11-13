@@ -48,12 +48,14 @@ async function loadTeamLogoMap() {
 }
 
 /* Scoreboard */
+/* Scoreboard */
 async function loadScoreboard() {
     const container = document.getElementById("scoreboard-container");
     if (!container) return;
     
     // Keep the h2, only replace the content below it
-    container.innerHTML = `<h2>Today's Games</h2><p class="loading">Loading scoreboard...</p>`;
+    // *** MODIFIED TITLE ***
+    container.innerHTML = `<h2>Today's Scoreboard</h2><p class="loading">Loading scoreboard...</p>`;
     
     try {
         const res = await fetch(`${API}/api/games/scoreboard`);
@@ -62,7 +64,8 @@ async function loadScoreboard() {
         const games = data.games || [];
         
         if (!games.length) {
-            container.innerHTML = `<h2>Today's Games</h2><p>No games scheduled for today.</p>`;
+            // *** MODIFIED TITLE ***
+            container.innerHTML = `<h2>Today's Scoreboard</h2><p>No games scheduled for today.</p>`;
             return;
         }
 
@@ -97,7 +100,8 @@ async function loadScoreboard() {
             </div>`;
         };
         
-        let html = `<h2>Today's Games</h2>`;
+        // *** MODIFIED TITLE ***
+        let html = `<h2>Today's Scoreboard</h2>`;
         
         // Grid for all games
         html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:15px;">`;
@@ -116,7 +120,8 @@ async function loadScoreboard() {
 
     } catch (err) {
         console.error("loadScoreboard:", err);
-        container.innerHTML = `<h2>Today's Games</h2><p class="error">Failed to load scoreboard.</p>`;
+        // *** MODIFIED TITLE ***
+        container.innerHTML = `<h2>Today's Scoreboard</h2><p class="error">Failed to load scoreboard.</p>`;
     }
 }
 

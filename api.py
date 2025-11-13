@@ -24,21 +24,24 @@ import os
 import time
 import json
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, timedelta, timezone # <-- ADDED TIMEZONE
 from flask import Flask, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 import pandas as pd
+import requests # <-- ADDED REQUESTS
 
 # Try importing nba_api modules; if not available, endpoints will fall back.
 try:
     from nba_api.stats.static import teams as teams_static
     from nba_api.stats.endpoints import (
-        scoreboardv2,
+        # scoreboardv2, <-- REMOVED
         leaguestandingsv3,
         leaguedashplayerstats,
         commonteamroster,
         commonplayerinfo,
         playergamelog,
+        # teamgamelog, <-- REMOVED
         boxscoretraditionalv3,
         boxscoreadvancedv3
     )
@@ -64,7 +67,8 @@ def cache_get(key):
         return None
     expiry, val = v
     if time.time() > expiry:
-        del _CACHE[key]
+        if key in _CACHE: # Check if key exists before deleting
+            del _CACHE[key]
         return None
     return val
 
@@ -80,8 +84,19 @@ def safe_records_from_df(df):
     if len(df) == 0:
         return []
     df = df.copy()
-    df = df.replace([pd.NA, pd.NaT, float('inf'), float('-inf')], pd.NA)
-    df = df.fillna(0)
+    
+    # --- *** FIX for ValueError: Columns must be same length as key *** ---
+    # Use a loop-based fillna which is more robust than the
+    # vectorized assignment that was causing the error.
+    numeric_cols = df.select_dtypes(include='number').columns
+    for col in numeric_cols:
+        df[col] = df[col].fillna(0)
+    
+    object_cols = df.select_dtypes(include='object').columns
+    for col in object_cols:
+        df[col] = df[col].fillna("")
+    # --- *** END FIX *** ---
+    
     for c in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[c]):
             df[c] = df[c].apply(lambda v: v.isoformat() if not pd.isna(v) else None)
@@ -212,64 +227,52 @@ def api_standings():
 # ---------------------------
 @app.route('/api/games/scoreboard')
 def api_scoreboard():
+    """
+    FIXED: Replaced scoreboardv2 with a direct call to NBA CDN.
+    This is more reliable and faster.
+    """
     cached = cache_get('scoreboard')
     if cached:
         return jsonify(cached)
     try:
-        if not NBA_API_AVAILABLE:
-            raise RuntimeError("nba_api not available")
-        # Use today's date (Eastern)
-        from pytz import timezone
-        ET = timezone('US/Eastern')
-        now_et = datetime.now(ET)
-        date_str = now_et.strftime('%Y-%m-%d')
-        sb = scoreboardv2.ScoreboardV2(game_date=date_str)
-        dfs = sb.get_data_frames()
-        games_df = None
-        linescore_df = None
-        for df in dfs:
-            cols = [c.lower() for c in df.columns]
-            if 'game_id' in cols or 'gameid' in cols:
-                games_df = df
-            if 'team_id' in cols and ('pts' in cols or 'points' in cols):
-                linescore_df = df
-        games = safe_records_from_df(games_df)
-        scores = safe_records_from_df(linescore_df)
-        teams_cache = cache_get('teams') or teams_static.get_teams() if NBA_API_AVAILABLE else []
-        teams_map = {t.get('id') or t.get('teamId') or t.get('TEAM_ID'): t for t in teams_cache}
+        # Fetch directly from the NBA's CDN
+        url = "https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json"
+        res = requests.get(url, timeout=5)
+        res.raise_for_status() # Fail fast if the URL is down
+        data = res.json().get('scoreboard', {})
+        
+        cdn_games = data.get('games', [])
         unified = []
-        for g in games:
-            gid = g.get('GAME_ID') or g.get('gameId') or g.get('GAMEID')
-            home_id = g.get('HOME_TEAM_ID') or g.get('homeTeamId') or g.get('HOME_TEAM_ID')
-            away_id = g.get('VISITOR_TEAM_ID') or g.get('visitorTeamId') or g.get('VISITOR_TEAM_ID')
-            home_score = None; away_score = None
-            for s in scores:
-                tid = s.get('TEAM_ID') or s.get('teamId') or s.get('TEAMID')
-                if tid == home_id:
-                    home_score = s.get('PTS') or s.get('pts') or s.get('POINTS')
-                if tid == away_id:
-                    away_score = s.get('PTS') or s.get('pts') or s.get('POINTS')
-            home_team = teams_map.get(home_id, {})
-            away_team = teams_map.get(away_id, {})
+        
+        for g in cdn_games:
+            # Transform the CDN data into the format the frontend expects
+            home_team = g.get('homeTeam', {})
+            away_team = g.get('awayTeam', {})
+            
+            # Format the start time
+            start_time_str = g.get('gameEt', '1970-01-01T00:00:00Z')
+            
             unified.append({
-                "gameId": gid,
-                "gameStatus": g.get('GAME_STATUS_TEXT') or g.get('GAME_STATUS') or g.get('STATUS'),
-                "homeTeamId": home_id,
-                "awayTeamId": away_id,
-                "homeTeam": home_team.get('full_name') or home_team.get('nickname') or g.get('HOME_TEAM_CITY') or '',
-                "awayTeam": away_team.get('full_name') or away_team.get('nickname') or g.get('VISITOR_TEAM_CITY') or '',
-                "homeAbbr": home_team.get('abbreviation') or g.get('HOME_TEAM_ABBREVIATION') or '',
-                "awayAbbr": away_team.get('abbreviation') or g.get('VISITOR_TEAM_ABBREVIATION') or '',
-                "homeLogo": f"https://cdn.nba.com/logos/nba/{home_id}/global/L/logo.svg" if home_id else "/static/logo.png",
-                "awayLogo": f"https://cdn.nba.com/logos/nba/{away_id}/global/L/logo.svg" if away_id else "/static/logo.png",
-                "homeScore": home_score if home_score is not None else 0,
-                "awayScore": away_score if away_score is not None else 0,
-                "startTimeUTC": g.get('GAME_DATE_EST') or g.get('GAME_DATE'),
-                "arena": g.get('ARENA') or g.get('ARENA_NAME') or ''
+                "gameId": g.get('gameId'), # This is the nba_api compatible ID
+                "gameStatus": g.get('gameStatusText'),
+                "homeTeamId": home_team.get('teamId'),
+                "awayTeamId": away_team.get('teamId'),
+                "homeTeam": home_team.get('teamCity') + " " + home_team.get('teamName'),
+                "awayTeam": away_team.get('teamCity') + " " + away_team.get('teamName'),
+                "homeAbbr": home_team.get('teamTricode'),
+                "awayAbbr": away_team.get('teamTricode'),
+                "homeLogo": f"https://cdn.nba.com/logos/nba/{home_team.get('teamId')}/global/L/logo.svg" if home_team.get('teamId') else "/static/logo.png",
+                "awayLogo": f"https://cdn.nba.com/logos/nba/{away_team.get('teamId')}/global/L/logo.svg" if away_team.get('teamId') else "/static/logo.png",
+                "homeScore": home_team.get('score'),
+                "awayScore": away_team.get('score'),
+                "startTimeUTC": start_time_str,
+                "arena": g.get('arena', {}).get('name', '')
             })
+            
         out = {"games": unified}
-        cache_set('scoreboard', out, ttl=15)
+        cache_set('scoreboard', out, ttl=15) # Cache for 15 seconds
         return jsonify(out)
+        
     except Exception as e:
         app.logger.exception("api_scoreboard failed; returning sample")
         sample = {
@@ -315,15 +318,16 @@ def api_leaders_home():
             top5 = df.sort_values(by=col, ascending=False).head(5) if col in df.columns else df.head(5)
             merged = pd.merge(top5, teams_df, left_on='TEAM_ID', right_on='id', how='left')
             merged = merged.loc[:, ~merged.columns.duplicated()]
-            out[stat] = [{"PLAYER": r.get('PLAYER_NAME') or r.get('PLAYER'), "TEAM": r.get('abbreviation'), stat: r.get(stat)} for r in merged.to_dict(orient='records')]
+            # FIX: Ensure PERSON_ID is included for frontend links
+            out[stat] = [{"PLAYER": r.get('PLAYER_NAME') or r.get('PLAYER'), "TEAM": r.get('abbreviation'), stat: r.get(stat), "PERSON_ID": r.get('PLAYER_ID')} for r in merged.to_dict(orient='records')]
         cache_set('leaders_home', out, ttl=30)
         return jsonify(out)
     except Exception as e:
         app.logger.exception("api_leaders_home failed; returning sample")
         sample = {
-            "PTS": [{"PLAYER":"L. James","TEAM":"LAL","PTS":30.1},{"PLAYER":"S. Curry","TEAM":"GSW","PTS":29.4}],
-            "REB": [{"PLAYER":"N. Jokic","TEAM":"DEN","REB":11.2},{"PLAYER":"G. Antetokounmpo","TEAM":"MIL","REB":10.8}],
-            "AST": [{"PLAYER":"L. Doncic","TEAM":"DAL","AST":9.8},{"PLAYER":"C. Paul","TEAM":"PHX","AST":8.9}]
+            "PTS": [{"PLAYER":"L. James","TEAM":"LAL","PTS":30.1, "PERSON_ID": 2544},{"PLAYER":"S. Curry","TEAM":"GSW","PTS":29.4, "PERSON_ID": 201939}],
+            "REB": [{"PLAYER":"N. Jokic","TEAM":"DEN","REB":11.2, "PERSON_ID": 203999},{"PLAYER":"G. Antetokounmpo","TEAM":"MIL","REB":10.8, "PERSON_ID": 203507}],
+            "AST": [{"PLAYER":"L. Doncic","TEAM":"DAL","AST":9.8, "PERSON_ID": 1629029},{"PLAYER":"C. Paul","TEAM":"PHX","AST":8.9, "PERSON_ID": 101108}]
         }
         cache_set('leaders_home', sample, ttl=30)
         return jsonify(sample)
@@ -384,74 +388,120 @@ def api_team_roster(team_id):
 # ---------------------------
 # API: /api/team/<team_id>/schedule
 # ---------------------------
+# ---------------------------
+# API: /api/team/<team_id>/schedule
+# ---------------------------
 @app.route('/api/team/<int:team_id>/schedule')
 def api_team_schedule(team_id):
     """
-    Returns upcoming and recent games for a given team.
-    Uses LeagueGameFinder (compatible with your nba_api version).
+    FIXED: Re-written to use *only* the reliable NBA CDN schedule feed.
+    This avoids all flaky nba_api endpoints for schedules.
+    It fetches the one CDN file and filters it for past/upcoming games.
     """
-    from datetime import datetime
-
     try:
-        if not NBA_API_AVAILABLE:
-            raise RuntimeError("nba_api not available")
+        # Get full league schedule from CDN (cached for 1 hour)
+        cdn_schedule = cache_get('full_schedule_v2') # Use a new cache key
+        if not cdn_schedule:
+            app.logger.info("Fetching full schedule from NBA CDN...")
+            sched_url = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json"
+            sched_res = requests.get(sched_url, timeout=5)
+            sched_res.raise_for_status()
+            cdn_schedule = sched_res.json()
+            cache_set('full_schedule_v2', cdn_schedule, ttl=3600)
 
-        from nba_api.stats.endpoints import leaguegamefinder
+        # Find all games for this team
+        team_games = []
+        league_schedule = cdn_schedule.get('leagueSchedule', {})
+        for game_date in league_schedule.get('gameDates', []):
+            for game in game_date.get('games', []):
+                # teamId in CDN is an integer
+                if game.get('homeTeam', {}).get('teamId') == team_id or \
+                    game.get('awayTeam', {}).get('teamId') == team_id:
+                    team_games.append(game)
+        
+        if not team_games:
+            app.logger.warning(f"No games found in CDN schedule for team {team_id}.")
+            return jsonify({"upcoming": [], "recent": []})
 
-        # ✔ Correct syntax for your nba_api version:
-        finder = leaguegamefinder.LeagueGameFinder(
-            team_id_nullable=team_id,
-            season_nullable=CURRENT_SEASON
-        )
+        # --- *** FIX: Helper to parse game time, returns None on failure *** ---
+        def get_game_time(g):
+            game_time_str = g.get('gameEt') # Get value, no default
+            if not game_time_str: # Check for None or ""
+                return None # Return None if no date
+            try:
+                return datetime.fromisoformat(game_time_str.replace('Z', '+00:00'))
+            except ValueError:
+                try:
+                    # Fallback for other formats
+                    return datetime.strptime(game_time_str, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc)
+                except Exception:
+                    return None # Return None if all parsing fails
 
-        games = finder.get_data_frames()[0]
+        # Sort all games by date (games with no time will be first/last)
+        team_games.sort(key=lambda g: get_game_time(g) or datetime.min.replace(tzinfo=timezone.utc))
+        
+        # Split into upcoming and recent
+        upcoming_games_raw = []
+        recent_games_raw = []
+        today = datetime.now(timezone.utc)
 
-        # Normalize date column
-        date_col = "GAME_DATE" if "GAME_DATE" in games.columns else "GAME_DATE_EST"
-        games[date_col] = pd.to_datetime(games[date_col])
+        for g in team_games:
+            game_time = get_game_time(g)
+            # Use game time if available, otherwise check game status
+            if game_time and game_time > today and g.get('gameStatusText') != 'Final':
+                upcoming_games_raw.append(g)
+            elif g.get('gameStatusText') == 'Final':
+                recent_games_raw.append(g)
+            elif not game_time and g.get('gameStatusText') != 'Final':
+                # No time, not final -> Upcoming
+                upcoming_games_raw.append(g)
 
-        # Rename for consistency
-        games.rename(columns={date_col: "GAME_DATE"}, inplace=True)
+        # Helper to format game for frontend
+        def format_game(g, is_recent=False):
+            home = g['homeTeam']
+            away = g['awayTeam']
+            matchup_str = f"{away['teamTricode']} @ {home['teamTricode']}"
+            game_time_obj = get_game_time(g)
 
-        # Convert GAME_ID to string
-        games["GAME_ID"] = games["GAME_ID"].astype(str)
-
-        # Sort games by date
-        games = games.sort_values("GAME_DATE")
-
-        today = pd.Timestamp(datetime.now().date())
-
-        # Split upcoming/recent
-        upcoming_df = games[games["GAME_DATE"] >= today].head(5)
-        recent_df = games[games["GAME_DATE"] < today].tail(5)
-
-        # Format output
-        def format_row(row):
-            return {
-                "GAME_ID": row["GAME_ID"],
-                "GAME_DATETIME": row["GAME_DATE"].isoformat(),
-                "MATCHUP": row.get("MATCHUP", ""),
-                "WL": row.get("WL")
+            game_data = {
+                "GAME_ID": g['gameId'],
+                # --- *** FIX: Send null if obj is None, else send ISO string *** ---
+                "GAME_DATETIME": game_time_obj.isoformat() if game_time_obj else None,
+                # --- *** FIX: Add a fallback date string *** ---
+                "GAME_DATE_STR": g.get('gameDateEst', 'Date TBD'), # e.g., "2025-11-14T00:00:00Z"
+                "MATCHUP": matchup_str,
+                "WL": None, # Default
             }
+            if is_recent:
+                # Determine WL for the requested team
+                team_score = home['score'] if home['teamId'] == team_id else away['score']
+                opp_score = away['score'] if home['teamId'] == team_id else home['score']
+                game_data['WL'] = 'W' if team_score > opp_score else 'L'
+                game_data['PTS'] = team_score
+                game_data['OPP_PTS'] = opp_score
+            return game_data
+
+        # Get last 5 recent, first 5 upcoming
+        recent_games = [format_game(g, is_recent=True) for g in recent_games_raw[-5:]]
+        recent_games.reverse() # Show most recent first
+        upcoming_games = [format_game(g) for g in upcoming_games_raw[:5]]
 
         return jsonify({
-            "upcoming": [format_row(r) for _, r in upcoming_df.iterrows()],
-            "recent":  [format_row(r) for _, r in recent_df.iterrows()]
+            "upcoming": upcoming_games,
+            "recent": recent_games
         })
 
     except Exception as e:
-        app.logger.error("api_team_schedule failed, returning sample fallback: %s", e)
-
+        app.logger.error("api_team_schedule failed completely: %s", e)
         sample = {
             "upcoming": [
                 {"GAME_ID": "1001", "GAME_DATETIME": "2025-04-10T19:30:00", "MATCHUP": "LAL vs GSW", "WL": None}
             ],
             "recent": [
-                {"GAME_ID": "999", "GAME_DATETIME": "2025-04-08T19:30:00", "MATCHUP": "LAL @ BOS", "WL": "L"}
+                {"GAME_ID": "999", "GAME_DATETIME": "2025-04-08T19:30:00", "MATCHUP": "LAL @ BOS", "WL": "L", "PTS": 100, "OPP_PTS": 110}
             ]
         }
         return jsonify(sample)
-
 
 # ---------------------------
 # API: /api/player/<player_id>/profile
@@ -463,6 +513,16 @@ def api_player_profile(player_id):
             info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()
             if info and len(info) > 0:
                 df_info = info[0]
+                # Also get headline stats
+                if len(info) > 1:
+                    df_stats = info[1]
+                    # Merge stats into info df
+                    if not df_stats.empty:
+                        stats_row = df_stats.iloc[0]
+                        df_info['PTS'] = stats_row.get('PTS')
+                        df_info['REB'] = stats_row.get('REB')
+                        df_info['AST'] = stats_row.get('AST')
+                
                 recs = safe_records_from_df(df_info)
                 return jsonify({"info": recs})
         raise RuntimeError("nba_api not available or no data")
@@ -509,23 +569,122 @@ def api_player_gamelog(player_id):
         return jsonify(sample)
 
 # ---------------------------
+# *** NEW HELPER FUNCTIONS for CDN box score ***
+# ---------------------------
+def _format_cdn_player(p, team_tricode):
+    # Helper to format a player obj from CDN to what frontend expects
+    stats = p.get('statistics', {})
+    
+    # --- FIX FOR MINUTES ---
+    minutes_str = stats.get('minutes', 'PT0M0S')
+    min_formatted = '00:00'
+    if minutes_str and 'PT' in minutes_str:
+        try:
+            # Use regex to find M and S values
+            match = re.match(r'PT(?:(\d+)M)?(?:(\d+)\.?\d*S)?', minutes_str)
+            if match:
+                mins = match.group(1) or '0'
+                secs = match.group(2) or '0'
+                # Format as MM:SS
+                min_formatted = f"{mins.zfill(2)}:{secs.zfill(2)}"
+        except Exception:
+            pass # Stick with '00:00'
+    # --- END FIX ---
+
+    return {
+        "personId": p.get('personId'),
+        # --- FIX FOR NAME: Use 'name' field, fall back to first/last ---
+        "playerName": p.get('name', p.get('firstName', '') + ' ' + p.get('lastName', '')),
+        "teamTricode": team_tricode,
+        "minutes": min_formatted, # Use the new formatted string
+        "points": stats.get('points'),
+        "reboundsTotal": stats.get('reboundsTotal'),
+        "assists": stats.get('assists'),
+        "steals": stats.get('steals'),
+        "blocks": stats.get('blocks'),
+        "fieldGoalsMade": stats.get('fieldGoalsMade'),
+        "fieldGoalsAttempted": stats.get('fieldGoalsAttempted'),
+        "threePointersMade": stats.get('threePointersMade'),
+        "threePointersAttempted": stats.get('threePointersAttempted'),
+        "freeThrowsMade": stats.get('freeThrowsMade'),
+        "freeThrowsAttempted": stats.get('freeThrowsAttempted'),
+        "turnovers": stats.get('turnovers'),
+        "plusMinusPoints": stats.get('plusMinusPoints'),
+        "playerImageUrl": f"https://cdn.nba.com/headshots/nba/latest/1040x760/{p.get('personId')}.png"
+    }
+
+def _format_cdn_team(t):
+    # Helper to format a team obj from CDN to what frontend expects
+    stats = t.get('statistics', {})
+    return {
+        "teamTricode": t.get('teamTricode'),
+        "teamName": t.get('teamName'),
+        "points": stats.get('points'),
+        "reboundsTotal": stats.get('reboundsTotal'),
+        "assists": stats.get('assists'),
+        "steals": stats.get('steals'),
+        "blocks": stats.get('blocks'),
+        "fieldGoalsMade": stats.get('fieldGoalsMade'),
+        "fieldGoalsAttempted": stats.get('fieldGoalsAttempted'),
+        "threePointersMade": stats.get('threePointersMade'),
+        "threePointersAttempted": stats.get('threePointersAttempted'),
+        "freeThrowsMade": stats.get('freeThrowsMade'),
+        "freeThrowsAttempted": stats.get('freeThrowsAttempted'),
+        "turnovers": stats.get('turnovers'),
+    }
+
+# ---------------------------
 # API: /api/game/<game_id>/boxscore
 # ---------------------------
 @app.route('/api/game/<game_id>/boxscore')
 def api_game_boxscore(game_id):
+    """
+    *** NEW CDN-BASED FUNCTION ***
+    Fetches boxscore directly from NBA's liveData CDN.
+    This is more reliable than the nba_api library endpoints
+    and fixes both missing names and duplicate team stats.
+    """
     try:
-        if NBA_API_AVAILABLE:
-            # Try advanced boxscore then traditional
-            adv = boxscoreadvancedv3.BoxScoreAdvancedV3(game_id=game_id).get_data_frames()
-            trad = boxscoretraditionalv3.BoxScoreTraditionalV3(game_id=game_id).get_data_frames()
-            # This is a simplified aggregator: player stats from trad[0], team stats from trad[1]
-            player_stats = trad[0].to_dict(orient='records') if trad and len(trad) > 0 else []
-            team_stats = trad[1].to_dict(orient='records') if trad and len(trad) > 1 else []
-            return jsonify({"playerStats": player_stats, "teamStats": team_stats})
-        else:
-            raise RuntimeError("nba_api not available")
+        # 1. Fetch data from CDN
+        url = f"https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{game_id}.json"
+        res = requests.get(url, timeout=5)
+        res.raise_for_status() # Fail fast if game_id is bad
+        
+        data = res.json()
+        game = data.get('game')
+        
+        if not game:
+            app.logger.error(f"Game {game_id}: CDN JSON response was empty or malformed.")
+            raise RuntimeError("CDN data was empty")
+
+        home_team = game.get('homeTeam', {})
+        away_team = game.get('awayTeam', {})
+
+        # 2. Process Player Stats
+        player_stats = []
+        
+        # Get Away Team Players
+        for p in away_team.get('players', []):
+            # Only add players who actually played
+            if p.get('status') == 'ACTIVE' and p.get('statistics', {}).get('minutes') and p.get('statistics', {}).get('minutes') != '00:00':
+                player_stats.append(_format_cdn_player(p, away_team.get('teamTricode')))
+        
+        # Get Home Team Players
+        for p in home_team.get('players', []):
+            if p.get('status') == 'ACTIVE' and p.get('statistics', {}).get('minutes') and p.get('statistics', {}).get('minutes') != '00:00':
+                player_stats.append(_format_cdn_player(p, home_team.get('teamTricode')))
+
+        # 3. Process Team Stats (Finals only, no duplicates)
+        team_stats = []
+        if away_team.get('statistics'):
+            team_stats.append(_format_cdn_team(away_team))
+        if home_team.get('statistics'):
+            team_stats.append(_format_cdn_team(home_team))
+        
+        return jsonify({"playerStats": player_stats, "teamStats": team_stats})
+
     except Exception as e:
-        app.logger.exception("api_game_boxscore failed; returning sample")
+        app.logger.exception("api_game_boxscore (CDN) failed; returning sample")
         sample = {
             "playerStats": [
                 {
@@ -546,13 +705,6 @@ def api_game_boxscore(game_id):
                     "freeThrowsAttempted": 3,
                     "turnovers": 2,
                     "plusMinusPoints": 10,
-                    "offensiveRating": 120.5,
-                    "defensiveRating": 95.3,
-                    "netRating": 25.2,
-                    "trueShootingPercentage": 0.66,
-                    "usagePercentage": 0.32,
-                    "assistPercentage": 0.28,
-                    "turnoverRatio": 10.4,
                     "playerImageUrl": f"https://cdn.nba.com/headshots/nba/latest/1040x760/201939.png"
                 }
             ],
@@ -592,7 +744,6 @@ def api_game_boxscore(game_id):
             ]
         }
         return jsonify(sample)
-
 # ---------------------------
 # API: player accolades (optional)
 # ---------------------------
@@ -625,7 +776,10 @@ if __name__ == '__main__':
     if "--port" in sys.argv:
         idx = sys.argv.index("--port")
         if idx + 1 < len(sys.argv):
-            port = int(sys.argv[idx + 1])
+            try:
+                port = int(sys.argv[idx + 1])
+            except ValueError:
+                app.logger.error(f"Invalid port: {sys.argv[idx + 1]}. Using default 5000.")
+
 
     app.run(host='127.0.0.1', port=port, debug=True)
-

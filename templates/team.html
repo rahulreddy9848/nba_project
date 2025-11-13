@@ -108,7 +108,7 @@
         return html;
     }
 
-    function buildScheduleTable(games, isRecent) {
+   function buildScheduleTable(games, isRecent) {
         if (!games || games.length === 0) {
             // --- FIX: More specific messages ---
             return isRecent ? "<p>No recent games found.</p>" : "<p>No upcoming games scheduled.</p>";
@@ -121,7 +121,28 @@
             const rowClick = isRecent && gameId ? `onclick="window.location.href='/game/${gameId}'"` : "";
             const rowClass = isRecent && gameId ? "clickable-row" : "";
             const title = isRecent && gameId ? "View Box Score" : "";
-            const gameDate = new Date(g.GAME_DATETIME || g.GAME_DATE || g.startTimeUTC || '').toLocaleDateString();
+
+            // --- *** FIX FOR DATES *** ---
+            let gameDate = 'TBD'; // Default text
+            if (g.GAME_DATETIME) {
+                // If we have a valid time, use it
+                gameDate = new Date(g.GAME_DATETIME).toLocaleDateString();
+            } else if (g.GAME_DATE_STR) {
+                // Otherwise, use the fallback date string from the API
+                // Try to format it, but default to the string itself
+                try {
+                    const d = new Date(g.GAME_DATE_STR);
+                    // Check for invalid date (which becomes 1970)
+                    if (d.getFullYear() < 2000) {
+                        gameDate = g.GAME_DATE_STR.split("T")[0]; // Just show 'YYYY-MM-DD'
+                    } else {
+                        gameDate = d.toLocaleDateString();
+                    }
+                } catch (e) {
+                    gameDate = g.GAME_DATE_STR.split("T")[0]; // Fallback to just date part
+                }
+            }
+            // --- *** END FIX *** ---
 
             // --- FIX: Show score for recent games ---
             let resultHtml = 'TBD';
