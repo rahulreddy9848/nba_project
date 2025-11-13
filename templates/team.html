@@ -5,22 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title id="page-title">GameTrack — Team</title>
     <link rel="stylesheet" href="/static/styles.css" />
-    <link rel="stylesheet" href="/static/chart.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <nav id="navbar">
         <div id="nav-left">
-            <a href="/"><img src="/static/logo.png" id="nav-logo" alt="GameTrack Logo" onerror="this.src='https://placehold.co/40x40/333/FFF?text=GT'"/></a>
+            <a href="/"><img src="https://placehold.co/40x40/007bff/FFF?text=GT" id="nav-logo" alt="GameTrack Logo"/></a>
             <span id="nav-title">GameTrack</span>
         </div>
         <div id="nav-right">
             <a href="/" class="nav-link">Home</a>
-            <a href="/teams" class="nav-link">Teams</a>
+            <a href="/teams" class="nav-link active">Teams</a>
             <a href="/charts" class="nav-link">Charts</a>
         </div>
     </nav>
 
-    <main id="main-content">
+    <main id="main-content" style="max-width: 1400px; margin: 0 auto; padding: 0 25px;">
         <div class="back-button" onclick="history.back()">← Back</div>
         <h1 id="team-name" class="page-title">Loading...</h1>
 
@@ -34,16 +34,20 @@
 
             <div class="detail-panel panel">
                 <h2>Schedule</h2>
+                <!-- NEW: Added titles for clarity -->
+                <h3 style="margin-top: 15px; color: #ccc;">Upcoming Games</h3>
                 <div id="upcoming-table" class="table-container">
                     <p class="loading">Loading...</p>
                 </div>
-                <div id="recent-table" class="table-container" style="margin-top:20px;">
+                <h3 style="margin-top: 25px; color: #ccc;">Recent Results</h3>
+                <div id="recent-table" class="table-container" style="margin-top:10px;">
                     <p class="loading">Loading...</p>
                 </div>
             </div>
         </div>
     </main>
 
+<!-- *** THIS SCRIPT WAS MISSING *** -->
 <script>
     // extract team id from path: /team/<id>
     const teamId = window.location.pathname.split("/").pop();
@@ -55,6 +59,7 @@
         const recentBox = document.getElementById("recent-table");
 
         try {
+            // First, get all teams to find the name
             const tRes = await fetch("/api/teams");
             const allTeams = await tRes.json();
             const team = allTeams.find(t => String(t.id) === String(teamId));
@@ -63,10 +68,12 @@
                 document.getElementById("page-title").textContent = team.full_name + " - Team Page";
             }
 
+            // Then, fetch roster
             const rRes = await fetch(`/api/team/${teamId}/roster`);
             const roster = await rRes.json();
             rosterBox.innerHTML = buildRosterTable(roster);
 
+            // Finally, fetch schedule
             const sRes = await fetch(`/api/team/${teamId}/schedule`);
             const schedule = await sRes.json();
             upcomingBox.innerHTML = buildScheduleTable(schedule.upcoming || [], false);
@@ -74,6 +81,7 @@
 
         } catch (err) {
             console.error(err);
+            nameEl.textContent = "Error Loading Team";
             rosterBox.innerHTML = `<p class="error">Failed to load team data.</p>`;
             upcomingBox.innerHTML = `<p class="error">Failed to load schedule.</p>`;
             recentBox.innerHTML = `<p class="error">Failed to load schedule.</p>`;
@@ -82,14 +90,15 @@
 
     function buildRosterTable(data) {
         if (!data || data.length === 0) return "<p>No roster available.</p>";
-        let html = `<table><thead><tr><th>#</th><th>PLAYER</th><th>POS</th><th>AGE</th><th>HEIGHT</th><th>WEIGHT</th><th>SCHOOL</th></tr></thead><tbody>`;
+        // --- FIX: Removed AGE from header ---
+        let html = `<table><thead><tr><th>#</th><th>PLAYER</th><th>POS</th><th>HEIGHT</th><th>WEIGHT</th><th>SCHOOL</th></tr></thead><tbody>`;
         data.forEach(p => {
             html += `
                 <tr onclick="window.location.href='/player/${p.PLAYER_ID || p.personId || p.PERSON_ID}'" class="clickable-row">
                     <td>${p.NUM || p.JERSEY || ''}</td>
                     <td>${p.PLAYER || p.player || p.DISPLAY_FIRST_LAST || ''}</td>
                     <td>${p.POSITION || p.position || ''}</td>
-                    <td>${p.AGE ?? "N/A"}</td>
+                    <!-- --- FIX: Removed AGE from cell --- -->
                     <td>${p.HEIGHT || ''}</td>
                     <td>${p.WEIGHT || ''}</td>
                     <td>${p.SCHOOL || p.college || "—"}</td>
@@ -99,15 +108,35 @@
         return html;
     }
 
-    function buildScheduleTable(games, clickable) {
-        if (!games || games.length === 0) return "<p>No games available.</p>";
+    function buildScheduleTable(games, isRecent) {
+        if (!games || games.length === 0) {
+            // --- FIX: More specific messages ---
+            return isRecent ? "<p>No recent games found.</p>" : "<p>No upcoming games scheduled.</p>";
+        }
+        
         let html = `<table><thead><tr><th>Date</th><th>Matchup</th><th>Result</th></tr></thead><tbody>`;
         games.forEach(g => {
-            const rowClick = clickable && g.GAME_ID ? `onclick="window.location.href='/game/${g.GAME_ID}'"` : "";
-            html += `<tr class="${clickable ? "clickable-row" : ""}" ${rowClick}>
-                        <td>${new Date(g.GAME_DATETIME || g.GAME_DATE || g.startTimeUTC || '').toLocaleDateString()}</td>
+            const gameId = g.GAME_ID || g.gameId;
+            // --- FIX: Allow clicking on recent games to see box score ---
+            const rowClick = isRecent && gameId ? `onclick="window.location.href='/game/${gameId}'"` : "";
+            const rowClass = isRecent && gameId ? "clickable-row" : "";
+            const title = isRecent && gameId ? "View Box Score" : "";
+            const gameDate = new Date(g.GAME_DATETIME || g.GAME_DATE || g.startTimeUTC || '').toLocaleDateString();
+
+            // --- FIX: Show score for recent games ---
+            let resultHtml = 'TBD';
+            if (isRecent) {
+                if (g.PTS !== undefined && g.OPP_PTS !== undefined) {
+                    resultHtml = `<strong>${g.WL || ''}</strong> ${g.PTS} - ${g.OPP_PTS}`;
+                } else {
+                    resultHtml = g.WL || 'Finished'; // Fallback
+                }
+            }
+
+            html += `<tr class="${rowClass}" ${rowClick} title="${title}">
+                        <td>${gameDate}</td>
                         <td>${g.MATCHUP || g.matchup || ''}</td>
-                        <td>${g.WL ?? g.WL ?? (g.W ? 'W' : (g.L ? 'L' : 'TBD'))}</td>
+                        <td>${resultHtml}</td>
                      </tr>`;
         });
         html += "</tbody></table>";
